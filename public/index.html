@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Pixel Place</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --panel: #181818;
+    --panel-border: #2a2a2a;
+    --text: #e8e8e8;
+    --text-dim: #888;
+    --accent: #4f8cff;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Canvas viewport ------------------------------------------------------- */
+  #viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background:
+      repeating-conic-gradient(#141414 0% 25%, #1a1a1a 0% 50%) 50% / 24px 24px;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  #viewport.panning { cursor: grabbing; }
+
+  #canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    transform-origin: 0 0;
+    box-shadow: 0 0 0 1px #000, 0 8px 40px rgba(0,0,0,0.6);
+    background: #fff;
+  }
+
+  /* Branding -------------------------------------------------------------- */
+  #brand {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+  }
+  #brand .logo {
+    width: 22px; height: 22px;
+    background:
+      linear-gradient(135deg, #ff4d4d, #ffd24d, #4dff7d, #4dd2ff, #b14dff);
+    border-radius: 5px;
+    box-shadow: 0 0 0 2px #0f0f0f, 0 0 0 3px #2a2a2a;
+  }
+  #brand h1 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    margin: 0;
+  }
+  #brand .sub { font-size: 11px; color: var(--text-dim); }
+
+  /* Status (online + connection) ----------------------------------------- */
+  #status {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  #status .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #555;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  #status .dot.online { background: #4dff7d; box-shadow: 0 0 6px #4dff7d; }
+  #status .dot.offline { background: #ff4d4d; }
+  #onlineCount { font-weight: 700; color: #fff; }
+
+  /* Bottom toolbar -------------------------------------------------------- */
+  #toolbar {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: calc(100vw - 32px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  #palette {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    gap: 4px;
+  }
+  .swatch {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.06s ease;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.selected {
+    border-color: #fff;
+    box-shadow: 0 0 0 1px #000, 0 0 8px rgba(255,255,255,0.4);
+    transform: scale(1.12);
+  }
+
+  #controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .custom-color {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  #customColor {
+    width: 30px; height: 26px;
+    padding: 0;
+    border: 1px solid var(--panel-border);
+    border-radius: 5px;
+    background: none;
+    cursor: pointer;
+  }
+  .selected-preview {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  #selectedSwatch {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    border: 1px solid var(--panel-border);
+    background: #fff;
+  }
+
+  /* Cooldown bar ---------------------------------------------------------- */
+  #cooldown {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    min-width: 220px;
+  }
+  #cooldownLabel { white-space: nowrap; color: var(--text-dim); min-width: 92px; }
+  #cooldownLabel.ready { color: #4dff7d; }
+  #cooldownTrack {
+    position: relative;
+    flex: 1;
+    height: 8px;
+    background: #2a2a2a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #cooldownFill {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: linear-gradient(90deg, var(--accent), #8db6ff);
+    border-radius: 4px;
+    transform-origin: left center;
+  }
+  #cooldownFill.ready { background: linear-gradient(90deg, #2faa55, #4dff7d); }
+
+  /* Hover info readout ---------------------------------------------------- */
+  #readout {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    z-index: 20;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    pointer-events: none;
+    min-width: 130px;
+  }
+  #readout .row { display: flex; align-items: center; gap: 8px; }
+  #readout .label { color: var(--text-dim); }
+  #readout .val { color: #fff; font-weight: 600; }
+  #hoverSwatch {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1px solid var(--panel-border);
+    background: #fff;
+    display: inline-block;
+  }
+
+  #hint {
+    position: fixed;
+    top: 64px;
+    left: 16px;
+    z-index: 20;
+    font-size: 11px;
+    color: var(--text-dim);
+    pointer-events: none;
+    line-height: 1.6;
+  }
+
+  /* Toast ----------------------------------------------------------------- */
+  #toast {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-12px);
+    z-index: 30;
+    background: #2a1a1a;
+    border: 1px solid #5a2a2a;
+    color: #ffb3b3;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 560px) {
+    #hint { display: none; }
+    .swatch { width: 18px; height: 18px; }
+    #cooldown { min-width: 160px; }
+  }
+</style>
+</head>
+<body>
+  <div id="viewport">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="brand">
+    <div class="logo"></div>
+    <div>
+      <h1>Pixel Place</h1>
+      <div class="sub">place a pixel · every 60s</div>
+    </div>
+  </div>
+
+  <div id="hint">
+    scroll to zoom · drag to pan · click to place
+  </div>
+
+  <div id="status">
+    <span><span id="connDot" class="dot offline"></span><span id="connText">connecting…</span></span>
+    <span><span id="onlineCount">0</span> online</span>
+  </div>
+
+  <div id="readout">
+    <div class="row"><span class="label">x,y</span><span id="coords" class="val">—</span></div>
+    <div class="row"><span class="label">color</span><span id="hoverSwatch"></span><span id="hoverHex" class="val">—</span></div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="toolbar">
+    <div id="palette"></div>
+    <div id="controls">
+      <div class="selected-preview">
+        <span>selected</span>
+        <span id="selectedSwatch"></span>
+        <span id="selectedHex">#ffffff</span>
+      </div>
+      <label class="custom-color">
+        custom
+        <input type="color" id="customColor" value="#000000" />
+      </label>
+      <div id="cooldown">
+        <span id="cooldownLabel" class="ready">ready</span>
+        <div id="cooldownTrack"><div id="cooldownFill" class="ready"></div></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  // --- Constants ----------------------------------------------------------
+  const CELL = 4;                 // rendered pixel size per cell
+  let GRID_SIZE = 200;            // updated from server init
+  let COOLDOWN_MS = 60000;        // updated from server init
+  const MIN_SCALE = 0.5;
+  const MAX_SCALE = 40;
+
+  const PALETTE = [
+    '#ffffff', '#e4e4e4', '#888888', '#222222', '#000000', '#ffa7d1', '#e50000', '#e59500',
+    '#a06a42', '#e5d900', '#94e044', '#02be01', '#00d3dd', '#0083c7', '#0000ea', '#cf6ee4',
+    '#820080', '#ffb470', '#ff5b00', '#ffd635', '#7eed56', '#00cc78', '#009eaa', '#3690ea',
+    '#493ac1', '#6a5cff', '#b44ac0', '#ff3881', '#6d482f', '#9c6926', '#515252', '#d4d7d9'
+  ];
+
+  // --- User identity ------------------------------------------------------
+  function getUserId() {
+    let id;
+    try {
+      id = localStorage.getItem('pixelplace_uid');
+      if (!id) {
+        id = 'u_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem('pixelplace_uid', id);
+      }
+    } catch {
+      // localStorage unavailable (private mode) — fall back to ephemeral id.
+      id = 'u_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    return id;
+  }
+  const userId = getUserId();
+
+  // --- DOM ----------------------------------------------------------------
+  const viewport = document.getElementById('viewport');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const paletteEl = document.getElementById('palette');
+  const customColor = document.getElementById('customColor');
+  const selectedSwatch = document.getElementById('selectedSwatch');
+  const selectedHex = document.getElementById('selectedHex');
+  const coordsEl = document.getElementById('coords');
+  const hoverSwatch = document.getElementById('hoverSwatch');
+  const hoverHex = document.getElementById('hoverHex');
+  const onlineCountEl = document.getElementById('onlineCount');
+  const connDot = document.getElementById('connDot');
+  const connText = document.getElementById('connText');
+  const cooldownLabel = document.getElementById('cooldownLabel');
+  const cooldownFill = document.getElementById('cooldownFill');
+  const toastEl = document.getElementById('toast');
+
+  // --- State --------------------------------------------------------------
+  let pixels = null;              // Array<string> hex colors, length GRID_SIZE^2
+  let selectedColor = '#000000';
+  let scale = 1;
+  let offsetX = 0, offsetY = 0;   // canvas translate (screen px)
+  let hover = { x: -1, y: -1 };
+
+  // --- Canvas drawing -----------------------------------------------------
+  function initCanvasElement() {
+    canvas.width = GRID_SIZE * CELL;
+    canvas.height = GRID_SIZE * CELL;
+  }
+
+  function renderAll() {
+    if (!pixels) return;
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        ctx.fillStyle = pixels[y * GRID_SIZE + x];
+        ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+      }
+    }
+  }
+
+  function drawPixel(x, y, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+  }
+
+  function applyTransform() {
+    canvas.style.transform =
+      'translate(' + offsetX + 'px,' + offsetY + 'px) scale(' + scale + ')';
+  }
+
+  function centerCanvas() {
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const cw = GRID_SIZE * CELL;
+    const ch = GRID_SIZE * CELL;
+    // Fit-to-view scale with a little margin.
+    scale = Math.min(vw / cw, vh / ch) * 0.85;
+    scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+    offsetX = (vw - cw * scale) / 2;
+    offsetY = (vh - ch * scale) / 2;
+    applyTransform();
+  }
+
+  // --- Coordinate mapping -------------------------------------------------
+  function screenToCell(clientX, clientY) {
+    const cx = (clientX - offsetX) / scale;
+    const cy = (clientY - offsetY) / scale;
+    const x = Math.floor(cx / CELL);
+    const y = Math.floor(cy / CELL);
+    if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return null;
+    return { x, y };
+  }
+
+  // --- Palette UI ---------------------------------------------------------
+  function buildPalette() {
+    PALETTE.forEach((color) => {
+      const btn = document.createElement('button');
+      btn.className = 'swatch';
+      btn.style.background = color;
+      btn.title = color;
+      btn.setAttribute('aria-label', 'color ' + color);
+      btn.addEventListener('click', () => selectColor(color));
+      paletteEl.appendChild(btn);
+    });
+  }
+
+  function selectColor(color) {
+    selectedColor = color.toLowerCase();
+    selectedSwatch.style.background = selectedColor;
+    selectedHex.textContent = selectedColor;
+    // Highlight matching swatch (if any).
+    const swatches = paletteEl.querySelectorAll('.swatch');
+    swatches.forEach((s, i) => {
+      s.classList.toggle('selected', PALETTE[i].toLowerCase() === selectedColor);
+    });
+  }
+
+  // --- Hover readout ------------------------------------------------------
+  function updateReadout() {
+    if (hover.x < 0) {
+      coordsEl.textContent = '—';
+      hoverHex.textContent = '—';
+      hoverSwatch.style.background = 'transparent';
+      return;
+    }
+    coordsEl.textContent = hover.x + ', ' + hover.y;
+    const c = pixels ? pixels[hover.y * GRID_SIZE + hover.x] : '#ffffff';
+    hoverHex.textContent = c;
+    hoverSwatch.style.background = c;
+  }
+
+  // --- Toast --------------------------------------------------------------
+  let toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  }
+
+  // --- Cooldown -----------------------------------------------------------
+  let cooldownEnd = 0;           // timestamp (ms) when cooldown ends
+  let cooldownRAF = null;
+
+  function setCooldown(remainingMs) {
+    cooldownEnd = Date.now() + Math.max(0, remainingMs);
+    if (!cooldownRAF) tickCooldown();
+  }
+
+  function tickCooldown() {
+    const remaining = cooldownEnd - Date.now();
+    if (remaining <= 0) {
+      cooldownFill.style.transform = 'scaleX(1)';
+      cooldownFill.classList.add('ready');
+      cooldownLabel.textContent = 'ready';
+      cooldownLabel.classList.add('ready');
+      cooldownRAF = null;
+      return;
+    }
+    const frac = remaining / COOLDOWN_MS;       // drains from 1 -> 0
+    cooldownFill.style.transform = 'scaleX(' + frac + ')';
+    cooldownFill.classList.remove('ready');
+    cooldownLabel.classList.remove('ready');
+    cooldownLabel.textContent = (remaining / 1000).toFixed(1) + 's';
+    cooldownRAF = requestAnimationFrame(tickCooldown);
+  }
+
+  function onCooldown() {
+    return cooldownEnd - Date.now() > 0;
+  }
+
+  // --- WebSocket ----------------------------------------------------------
+  let ws = null;
+  let reconnectDelay = 1000;
+
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(proto + '://' + location.host);
+
+    ws.addEventListener('open', () => {
+      connDot.className = 'dot online';
+      connText.textContent = 'connected';
+      reconnectDelay = 1000;
+      ws.send(JSON.stringify({ type: 'hello', userId }));
+    });
+
+    ws.addEventListener('message', (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      handleMessage(msg);
+    });
+
+    ws.addEventListener('close', () => {
+      connDot.className = 'dot offline';
+      connText.textContent = 'reconnecting…';
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+    });
+
+    ws.addEventListener('error', () => {
+      try { ws.close(); } catch {}
+    });
+  }
+
+  function handleMessage(msg) {
+    switch (msg.type) {
+      case 'init': {
+        GRID_SIZE = msg.gridSize || GRID_SIZE;
+        COOLDOWN_MS = msg.cooldownMs || COOLDOWN_MS;
+        pixels = msg.canvas.slice();
+        initCanvasElement();
+        renderAll();
+        centerCanvas();
+        updateReadout();
+        break;
+      }
+      case 'pixel': {
+        if (!pixels) break;
+        pixels[msg.y * GRID_SIZE + msg.x] = msg.color;
+        drawPixel(msg.x, msg.y, msg.color);
+        if (hover.x === msg.x && hover.y === msg.y) updateReadout();
+        break;
+      }
+      case 'online': {
+        onlineCountEl.textContent = msg.count;
+        break;
+      }
+      case 'cooldown': {
+        setCooldown(msg.remainingMs);
+        break;
+      }
+      case 'error': {
+        toast(msg.message || 'Error');
+        break;
+      }
+    }
+  }
+
+  function placePixel(x, y) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      toast('Not connected');
+      return;
+    }
+    if (onCooldown()) {
+      toast('On cooldown — wait for the timer');
+      return;
+    }
+    // Optimistic local draw; server broadcast confirms.
+    ws.send(JSON.stringify({ type: 'place', userId, x, y, color: selectedColor }));
+  }
+
+  // --- Pointer interaction (pan / zoom / place) ---------------------------
+  let isDown = false;
+  let didDrag = false;
+  let dragStart = { x: 0, y: 0 };
+  let startOffset = { x: 0, y: 0 };
+  const DRAG_THRESHOLD = 4; // px before a press becomes a pan
+
+  viewport.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    isDown = true;
+    didDrag = false;
+    dragStart = { x: e.clientX, y: e.clientY };
+    startOffset = { x: offsetX, y: offsetY };
+    viewport.setPointerCapture(e.pointerId);
+  });
+
+  viewport.addEventListener('pointermove', (e) => {
+    // Update hover cell.
+    const cell = screenToCell(e.clientX, e.clientY);
+    if (cell) {
+      if (cell.x !== hover.x || cell.y !== hover.y) {
+        hover = cell;
+        updateReadout();
+      }
+    } else if (hover.x !== -1) {
+      hover = { x: -1, y: -1 };
+      updateReadout();
+    }
+
+    if (!isDown) return;
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    if (!didDrag && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      didDrag = true;
+      viewport.classList.add('panning');
+    }
+    if (didDrag) {
+      offsetX = startOffset.x + dx;
+      offsetY = startOffset.y + dy;
+      applyTransform();
+    }
+  });
+
+  function endPointer(e) {
+    if (!isDown) return;
+    isDown = false;
+    viewport.classList.remove('panning');
+    try { viewport.releasePointerCapture(e.pointerId); } catch {}
+    if (!didDrag) {
+      const cell = screenToCell(e.clientX, e.clientY);
+      if (cell) placePixel(cell.x, cell.y);
+    }
+  }
+
+  viewport.addEventListener('pointerup', endPointer);
+  viewport.addEventListener('pointercancel', () => { isDown = false; viewport.classList.remove('panning'); });
+
+  // Zoom toward cursor.
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    let newScale = scale * factor;
+    newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+    if (newScale === scale) return;
+    // Keep the point under the cursor fixed.
+    const ratio = newScale / scale;
+    offsetX = e.clientX - (e.clientX - offsetX) * ratio;
+    offsetY = e.clientY - (e.clientY - offsetY) * ratio;
+    scale = newScale;
+    applyTransform();
+  }, { passive: false });
+
+  // --- Color inputs -------------------------------------------------------
+  customColor.addEventListener('input', (e) => selectColor(e.target.value));
+
+  // --- Resize -------------------------------------------------------------
+  window.addEventListener('resize', () => {
+    // Keep canvas roughly centered if it would drift off-screen entirely.
+    applyTransform();
+  });
+
+  // --- Boot ---------------------------------------------------------------
+  buildPalette();
+  selectColor('#000000');
+  connect();
+})();
+</script>
+</body>
+</html>

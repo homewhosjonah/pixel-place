@@ -1,0 +1,4 @@
+node_modules/
+canvas.db
+canvas.db-wal
+canvas.db-shm
