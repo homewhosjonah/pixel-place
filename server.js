@@ -12,7 +12,7 @@ const Database = require('better-sqlite3');
 const PORT = process.env.PORT || 3000;
 const GRID_SIZE = 1000;                  // 1000 x 1000 grid
 const TOTAL_PIXELS = GRID_SIZE * GRID_SIZE;
-const COOLDOWN_MS = 60 * 1000;          // 60 seconds between placements per user
+const COOLDOWN_MS = 1000;          // 60 seconds between placements per user
 const DEFAULT_COLOR = '#ffffff';        // white canvas on first run
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'canvas.db');
 
